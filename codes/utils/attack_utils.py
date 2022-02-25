@@ -9,6 +9,8 @@ import numpy as np
 from livelossplot import PlotLosses
 import os
 
+from .net_utils import CombNet, CombNet_soft
+
 def select_data(trainset, nb_stolen,batch_size=128, select_shuffle = False):  #attack용 데이터 중 원하는 개수 추출
     x = trainset.data
     nb_stolen = np.minimum(nb_stolen, x.shape[0])
@@ -34,22 +36,12 @@ def query_label(x, victim_clf, victim_clf_fake, tau, use_probability=False):   #
     
     return labels
 
-class CombNet(nn.Module):
-    def __init__(self, net_orig, net_fake, tau=0.5):
-        super(CombNet, self).__init__()
-        self.net_orig = net_orig
-        self.net_fake = net_fake
-        self.tau = tau
-        
-    def forward(self, x):
-        x1 = self.net_orig(x)
-        x2 = self.net_fake(x)
-        cond_in = torch.max(x1, dim=1).values>self.tau
-        out = (x1*cond_in.view(-1,1)+x2*(~cond_in.view(-1,1)))
-        return out
 
-def train_stmodel_comb(steal_loader, thieved_clf, criterion, optimizer, victim_comb, epochs, device, 
+def train_stmodel_comb_hard_label(steal_loader, thieved_clf, criterion, optimizer, victim_comb, epochs, device, 
                       test_loader=None, save_dir = "../results", save_model="cifar_stmodel.pth"):
+    """
+        attack with hard label
+    """
     
     thieved_clf.to(device)
     liveloss_tr = PlotLosses()
@@ -90,7 +82,53 @@ def train_stmodel_comb(steal_loader, thieved_clf, criterion, optimizer, victim_c
         liveloss_tr.update(logs_clf)
         liveloss_tr.send()  
     return thieved_clf, logs_clf     
+
+
+def train_stmodel_comb_soft_label(steal_loader, thieved_clf, criterion, optimizer, victim_comb, epochs, device, 
+                      test_loader=None, save_dir = "../results", save_model="cifar_stmodel.pth"):
+    """
+        attack with hard label
+    """
     
+    thieved_clf.to(device)
+    liveloss_tr = PlotLosses()
+    logs_clf = {}
+    best_acc = 0.0
+    
+#     save_model = str(victim_comb.tau)+"_"+save_model
+    for epoch in range(epochs):
+        losses = AverageVarMeter()
+        thieved_clf.train()
+        for x,y in steal_loader:
+            x = x.to(device)
+            
+            victim_comb.to(device).eval()
+            fake_out = victim_comb(x)
+            victim_comb.cpu()
+            
+            thieved_clf.zero_grad()
+            out = thieved_clf(x)
+                
+            loss = criterion(out,fake_out)
+            
+            loss.backward()
+            optimizer.step()
+            
+            losses.update(loss,x.size(0))
+            del out,x,y,loss, fake_label
+            torch.cuda.empty_cache()
+        logs_clf['loss'] = losses.avg.detach().cpu()
+        if test_loader:
+            logs_clf['val_loss'],logs_clf['val_acc'] = test_model(thieved_clf, test_loader, criterion, device, best_acc, save_dir, save_model)
+            if best_acc<logs_clf['val_acc']:
+                best_acc = logs_clf['val_acc']
+
+        liveloss_tr.update(logs_clf)
+        liveloss_tr.send()  
+    return thieved_clf, logs_clf     
+    
+
+
     
 def train_stmodel(steal_loader, thieved_clf, criterion, use_probability, optimizer, victim_clf, victim_clf_fake, tau, nb_stolen, batch_size, epochs, device, testloader=None, save_dir = "../results", save_model="cifar_stmodel.pth"):
     
@@ -130,13 +168,16 @@ def train_stmodel(steal_loader, thieved_clf, criterion, use_probability, optimiz
     return thieved_clf, logs_clf
     
     
-def test_model_from_taus(model, model_fake, tau_list, test_loader, criterion, device,pred_prob = False):
+def test_model_from_taus(model, model_fake, tau_list, test_loader, criterion, device, soft = False):
     lss = []
     acs = []
     for tau in tau_list:
         losses = AverageVarMeter()
         accs = AverageVarMeter()
-        model_comb = CombNet(model, model_fake,tau).to(device).eval()
+        if soft:
+            model_comb = CombNet_soft(model, model_fake,tau).to(device).eval()
+        else:
+            model_comb = CombNet(model, model_fake,tau).to(device).eval()
         for batch_idx, (x,y) in enumerate(test_loader):
             x = x.to(device)
             y = y.to(device)

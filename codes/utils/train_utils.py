@@ -10,9 +10,14 @@ import os
 
 from .swae_utils import sliced_wasserstein_distance
 from .eval_utils import AverageVarMeter, accuracy
+from .net_utils import apply_taylor_softmax
 
 def train_swd_fakenet_NLL(clf, train_loader, st_loader, optimizer,device, epochs, 
                           loss_weights=5., test_loader = None,save_dir='../results', save_model="cifar_fake.pth"):
+    
+    """
+        train fakenet with NLL loss and SWD regularization
+    """
 
     clf.to(device)
     
@@ -33,9 +38,9 @@ def train_swd_fakenet_NLL(clf, train_loader, st_loader, optimizer,device, epochs
         for x,y in train_loader:
             x,y = x.to(device),y.to(device)
             clf.zero_grad()
-            
-            out = 1-clf(x)
-            out = torch.log(out)
+
+            pred = clf(x)
+            out = torch.log(1-pred)
             fake_loss = loss_clf(out,y)
 #             fake_loss = 0
             try:
@@ -43,16 +48,16 @@ def train_swd_fakenet_NLL(clf, train_loader, st_loader, optimizer,device, epochs
             except StopIteration:
                 iterloader = iter(st_loader)
                 batch = next(iterloader)
-            swd_loss = sliced_wasserstein_distance(out,torch.log(batch[0]).to(device),num_projections=50,p=2,device=device)
+            swd_loss = sliced_wasserstein_distance(pred,batch[0].to(device),num_projections=50,p=2,device=device)
             loss = fake_loss + swd_loss*loss_weights
             loss.backward()
             optimizer.step()
-            acc = accuracy(-out.detach().cpu(),y.detach().cpu())
+            acc = accuracy(pred.detach().cpu(),y.detach().cpu())
             losses.update(loss,x.size(0))
             losses1.update(fake_loss.detach().cpu(),x.size(0))
             losses2.update(swd_loss.detach().cpu(),x.size(0))
             accs.update(acc[0],x.size(0))
-            del acc, out,x,y,loss,batch
+            del acc, out,x,y,loss,batch, pred, swd_loss
             torch.cuda.empty_cache()
             
         logs_clf['acc'] = accs.avg.detach().cpu()
@@ -69,8 +74,12 @@ def train_swd_fakenet_NLL(clf, train_loader, st_loader, optimizer,device, epochs
     clf.cpu()
     return clf, logs_clf
 
-def train_swd_fakenet(clf, train_loader, st_loader, optimizer,device, epochs, 
+def train_swd_fakenet_CE(clf, train_loader, st_loader, optimizer,device, epochs, 
                           loss_weights=[-1.0,5.0],test_loader = None,save_dir='../results', save_model="cifar_fake.pth"):
+    """
+        train fakenet with logit output and SWD regularization
+        the first compoment of "loss_weights" should be negative!
+    """
     clf.to(device)
     loss_clf = nn.CrossEntropyLoss()
     liveloss_tr = PlotLosses()
@@ -126,6 +135,10 @@ def train_swd_fakenet(clf, train_loader, st_loader, optimizer,device, epochs,
 
 def train_fakenet_NLL(clf, train_laoder, optimizer, device, epochs, test_loader = None, save_dir = "../results",save_model="cifar_fakenet.pth"):
     
+    """
+        train fakenet with NLL loss without any regularization
+    """
+    
     loss_clf = nn.NLLLoss() 
     
     clf.to(device)
@@ -165,6 +178,9 @@ def train_fakenet_NLL(clf, train_laoder, optimizer, device, epochs, test_loader 
     return clf, logs_clf
 
 def test_fake_model_NLL(model, test_loader, criterion, device, worst_acc=100.0, save_dir='../results', save_model = "fake_ckpt.pth"):
+    """
+        test fakenet if criterion is NLL
+    """
     model.eval()
     losses = AverageVarMeter()
     accs = AverageVarMeter()
@@ -186,6 +202,9 @@ def test_fake_model_NLL(model, test_loader, criterion, device, worst_acc=100.0, 
 
 
 def test_fake_model(model, test_loader, criterion, loss_weight, device, worst_acc=100.0, save_dir='../results', save_model = "fake_ckpt.pth"):
+    """
+        test fake model if criterion directly uses mode output!
+    """
     model.eval()
     losses = AverageVarMeter()
     accs = AverageVarMeter()
@@ -243,7 +262,7 @@ def train_model_multiLoss(clf, train_loader, optimizer, device,
     
     return clf, logs_clf
 
-def train_model_with_oe(clf, train_loader, outlier_loader, optimizer, device, 
+def train_model_with_oe_KL(clf, train_loader, outlier_loader, optimizer, device, 
                           loss_in, loss_out, weight_out, epochs,pred_prob = True, test_loader = None,
                           save_dir = '../results', save_model="cifar_clf.pth"):
     clf.to(device)
@@ -260,7 +279,7 @@ def train_model_with_oe(clf, train_loader, outlier_loader, optimizer, device,
         clf.train()
         for in_set, out_set in zip(train_loader, outlier_loader):
             x,y = in_set[0].to(device),in_set[1].to(device)
-            x_out = out_set[0].to(revice)
+            x_out = out_set[0].to(device)
             
             clf.zero_grad()
             
@@ -269,9 +288,12 @@ def train_model_with_oe(clf, train_loader, outlier_loader, optimizer, device,
             
             if pred_prob:
                 pred_in = torch.log(pred_in)
+            else:
+                pred_out = apply_apply_taylor_softmax(pred_out)
             loss1 = loss_in(pred_in,y)
             
-            loss2 = weight_out*loss_out(pred_out, torch.ones_like(pred_out)*0.1)
+                
+            loss2 = weight_out*loss_out(pred_out.log(), torch.ones_like(pred_out)*0.1)
             loss = loss1+loss2
             
             loss.backward()
@@ -300,7 +322,12 @@ def train_model_with_oe(clf, train_loader, outlier_loader, optimizer, device,
     
     return clf, logs_clf
 
+
+
 def train_model_CE(clf, train_loader, optimizer, device, epochs, test_loader = None, save_dir = "../results",save_model="cifar_clf.pth"):
+    """
+        train network with CE loss
+    """
     
     loss_clf = nn.CrossEntropyLoss()
     clf.to(device)
@@ -338,6 +365,10 @@ def train_model_CE(clf, train_loader, optimizer, device, epochs, test_loader = N
     return clf, logs_clf
 
 def train_model_NLL(clf, train_loader, optimizer, device, epochs, test_loader = None, save_dir = "../results",save_model="cifar_clf.pth"):
+    
+    """
+        train network with NLL loss
+    """
     
     loss_clf = nn.NLLLoss() 
     

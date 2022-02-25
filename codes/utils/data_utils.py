@@ -48,8 +48,6 @@ def load_cifar10(data_dir="../data/cifar10", batch_size=128, test_batch = None,t
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
             ])
 
-    if test_batch is None:
-        test_batch = len(testset)
 
     trainset = datasets.CIFAR10(root=data_dir, train=True,
                                             download=True, transform=transform_train)
@@ -57,6 +55,10 @@ def load_cifar10(data_dir="../data/cifar10", batch_size=128, test_batch = None,t
                                               shuffle=train_shuffle)#, num_workers=2)
     testset = datasets.CIFAR10(root=data_dir, train=False,
                                            download=True, transform=transform_test)
+    
+    if test_batch is None:
+        test_batch = len(testset)
+    
     testloader = torch.utils.data.DataLoader(testset, batch_size=test_batch,
                                              shuffle=False)#, num_workers=2)
     return trainloader, testloader

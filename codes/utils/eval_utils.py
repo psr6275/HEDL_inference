@@ -2,16 +2,20 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-def maxclass_hist(data_loader, model, device, plt_title = None,bins=10, return_val = False):
+def maxclass_hist(data_loader, model, device, plt_title = None,bins=10, 
+                  return_val = False, clipping =False, clip_vals = [0.0,1.0]):
     model.to(device).eval()
     for i, data in enumerate(data_loader,0):
-        outs = model(data[0].to(device))
+        x = data[0].to(device)
+        outs = model(x)
         if i==0:
             max_vals = outs.cpu().detach().numpy()
         else:
             max_vals = np.vstack((max_vals, outs.cpu().detach().numpy()))
-        del data, outs
+        del data, outs,x
     max_vals = np.max(max_vals,axis=1)
+    if clipping:
+        max_vals = np.clip(max_vals, clip_vals[0], clip_vals[1])
     if plt_title:
         plt.title(plt_title)
     plt.hist(max_vals, bins=bins)

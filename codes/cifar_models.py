@@ -6,24 +6,10 @@ import numpy as np
 from torchvision import datasets, transforms
 from torch.utils.data import SubsetRandomSampler
 
-
+from utils import apply_taylor_softmax
 
 NUM_CLASSES = 10
 
-
-def apply_taylor_softmax(x):
-    x = 1+x+0.5*x**2                                   
-    x /= torch.sum(x,axis=1).view(-1,1)
-    return x
-
-class Net_tsoftmax(nn.Module):
-    def __init__(self, model):
-        super(Net_tsoftmax, self).__init__()
-        self.model = model
-    def forward(self,x):
-        x = self.model(x)
-        x = apply_taylor_softmax(x)
-        return x
     
 class Net(nn.Module):
     def __init__(self, num_classes=NUM_CLASSES):
