@@ -64,11 +64,12 @@ def train_swd_fakenet_NLL(clf, train_loader, st_loader, optimizer,device, epochs
         logs_clf['loss'] = losses.avg.detach().cpu()
         logs_clf['loss1'] = losses1.avg.detach().cpu()
         logs_clf['loss2'] = losses2.avg.detach().cpu()
+
         if test_loader:
             logs_clf['val_loss1'],logs_clf['val_acc'] = test_fake_model_NLL(clf, test_loader, loss_clf, device,worst_acc, save_dir, save_model)
             if worst_acc>logs_clf['val_acc']:
                 worst_acc = logs_clf['val_acc']
-
+#         print(epoch,logs_clf)
         liveloss_tr.update(logs_clf)
         liveloss_tr.send()
     clf.cpu()
@@ -403,10 +404,69 @@ def train_model_NLL(clf, train_loader, optimizer, device, epochs, test_loader = 
 
         liveloss_tr.update(logs_clf)
         liveloss_tr.send()  
+#         print(epoch,logs_clf)
     
     clf.cpu()
     
     return clf, logs_clf
+
+def train_model_NLL_eff(clf, train_loader, optimizer, device, epochs, test_loader = None, save_dir = "../results",save_model="cifar_clf.pth"):
+    
+    """
+        train network with NLL loss
+    """
+    
+    loss_clf = nn.NLLLoss() 
+    
+    clf.to(device)
+#     liveloss_tr = PlotLosses()
+    logs_clf = {}
+    best_acc = 0.0
+    for epoch in range(epochs):
+        losses = AverageVarMeter()
+        accs = AverageVarMeter()
+        clf.train()
+        for x,y in train_loader:
+            x,y = x.to(device),y.to(device)
+            clf.zero_grad()
+            out = clf(x) 
+            #torch에서 logsoftmax 쓰듯이 log를 취해주면 학습이 더 잘됨
+            loss = loss_clf(torch.log(out),y)
+            loss.backward()
+            optimizer.step()
+            
+            acc = accuracy(out.detach().cpu(),y.detach().cpu())
+            losses.update(loss,x.size(0))
+            accs.update(acc[0],x.size(0))
+            del acc, out,x,y,loss
+            torch.cuda.empty_cache()
+        logs_clf['acc'] = accs.avg.detach().cpu()
+        logs_clf['loss'] = losses.avg.detach().cpu()
+        print(epoch,logs_clf['acc'],logs_clf['loss'])
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for data in test_loader:
+                images, labels = data
+                images, labels = images.to(device), labels.to(device)
+                # calculate outputs by running images through the network
+                outputs = clf(images)
+                # the class with the highest energy is what we choose as prediction
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+
+        print('Accuracy of the network on the 10000 test images: %d %%' % (
+            100 * correct / total))
+
+#         liveloss_tr.update(logs_clf)
+#         liveloss_tr.send()  
+#         print(epoch,logs_clf)
+    
+    clf.cpu()
+    
+    return clf, logs_clf
+
 
 def test_model_multiple(model, test_loader, loss_list, loss_weights, device, 
                         best_acc=0.0,save_dir = "../results/",save_model = "ckpt.pth"):
