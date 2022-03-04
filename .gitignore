@@ -3,3 +3,4 @@ results/
 codes/*.ipynb_checkpoints/
 codes/__pycache__/
 codes/utils/__pycache__/
+codes/rm_codes/
