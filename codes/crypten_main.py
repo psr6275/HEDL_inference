@@ -3,6 +3,7 @@ import logging
 import os
 
 from crypten_utils import MultiProcessLauncher
+import crypten.communicator as comm
 
 parser = argparse.ArgumentParser(description="CrypTen Cifar Training")
 parser.add_argument(
@@ -69,7 +70,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--multiprocess",
-    default=False,
+    default=True,
     action="store_true",
     help="Run example in multiprocess mode",
 )
@@ -94,6 +95,9 @@ def _run_experiment(args):
         args.skip_plaintext,
         args.print_freq,
     )
+    print("="*10)
+    print("total communication stats")
+    comm.get().print_communication_stats()
 
 
     

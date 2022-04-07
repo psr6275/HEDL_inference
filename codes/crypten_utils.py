@@ -12,6 +12,8 @@ import uuid
 
 import crypten
 import crypten.communicator as comm
+from crypten.config import cfg
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,6 +24,8 @@ import torch.utils.data.distributed
 from torchvision import datasets, transforms
 
 from utils import load_cifar10
+
+cfg.communicator.verbose = True # add this line
 
 def get_input_size(val_loader, batch_size):
     input, target = next(iter(val_loader))
@@ -64,7 +68,7 @@ def run_mpc_cifar(batch_size =128, net1_location = None, net2_location=None, dat
         random.seed(seed)
         torch.manual_seed(seed)
     
-    crypten.init()
+#     crypten.init()
     
     _, test_loader = load_cifar10(data_dir="../data/cifar10", batch_size=128, 
                                        test_batch = 128,train_shuffle=True)
@@ -80,10 +84,16 @@ def run_mpc_cifar(batch_size =128, net1_location = None, net2_location=None, dat
         logging.info("===== Evaluating plaintext combined LeNet network =====")
         validate_comb(test_loader, net1, net2, criterion, tau, print_freq, cond_bool = True)
     logging.info("===== Evaluating Private combined LeNet network =====")
+    print("*"*30)
+    crypten.print_communication_stats()
+    print("*"*30)
     input_size = get_input_size(test_loader, batch_size)
     net1_enc = construct_private_model(input_size, net1)
     net2_enc = construct_private_model(input_size, net2)
     validate_comb(test_loader, net1_enc, net2_enc, criterion, tau, print_freq)
+    print("*"*30)
+    crypten.print_communication_stats()
+    print("*"*30)
     
     
 def validate(val_loader, model, criterion, print_freq=10):
