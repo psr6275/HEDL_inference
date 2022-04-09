@@ -6,20 +6,55 @@ import numpy as np
 from torchvision import datasets, transforms
 from torch.utils.data import SubsetRandomSampler
 
+import copy
+
 import os
 
 from torch.utils.data import TensorDataset, DataLoader
 
-def make_st_loader(model, train_loader, device):
-    model.to(device)
-    model.eval()
-    outs = []
-    for x,_ in train_loader:
-        outs.append(model(x.to(device)).detach().cpu())
-    outs = torch.cat(outs,dim=0)
-    st_loader = DataLoader(TensorDataset(outs),shuffle=True,batch_size=train_loader.batch_size)
-    model.cpu()
-    return st_loader    
+transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            ])
+transform_test = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            ])
+
+imagenet_transform=transforms.Compose(
+                    [transforms.Resize(32),
+                     transforms.ToTensor(),
+                     transforms.RandomHorizontalFlip(),
+                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+# def make_st_loader(model, train_loader, device, num_data = None):
+#     model.to(device)
+#     model.eval()
+#     outs = []
+#     for x,_ in train_loader:
+#         outs.append(model(x.to(device)).detach().cpu())
+#     outs = torch.cat(outs,dim=0)
+#     st_loader = DataLoader(TensorDataset(outs),shuffle=True,batch_size=train_loader.batch_size)
+#     model.cpu()
+#     return st_loader    
+
+def train_valid_split(dataloader, total_data=20000, ratio = 0.5, batch_size = 128):
+    dset = copy.deepcopy(dataloader.dataset)
+    dset.transform = transform_test
+    if total_data > len(dset.targets):
+        total_data = len(dset.targets)
+    print("total data:", total_data)
+    dset.data = dset.data[:total_data]
+    dset.targets = dset.targets[:total_data]
+    num_tr = int(total_data*ratio)
+    num_val = total_data - num_tr
+    trset, valset = torch.utils.data.random_split(dset, [num_tr, num_val])
+    trloader = torch.utils.data.DataLoader(trset, batch_size = batch_size, shuffle = True)
+    valloader = torch.utils.data.DataLoader(valset, batch_size = batch_size, shuffle = False)
+    return trloader, valloader
+    
 
 def make_randomlabel(dataloader, num_class = 10, batch_size=128, train_shuffle=True):
     randlabel = torch.tensor([])
@@ -37,17 +72,6 @@ def make_randomlabel(dataloader, num_class = 10, batch_size=128, train_shuffle=T
     return randloader
 
 def load_cifar10(data_dir="../data/cifar10", batch_size=128, test_batch = None,train_shuffle=True):
-    transform_train = transforms.Compose([
-                transforms.RandomCrop(32, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-            ])
-    transform_test = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-            ])
-
 
     trainset = datasets.CIFAR10(root=data_dir, train=True,
                                             download=True, transform=transform_train)
@@ -64,16 +88,16 @@ def load_cifar10(data_dir="../data/cifar10", batch_size=128, test_batch = None,t
     return trainloader, testloader
 
 def load_cifar100(data_dir="../data/cifar100", batch_size=128, train_shuffle=False):
-    transform_train = transforms.Compose([
-                transforms.RandomCrop(32, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-            ])
-    transform_test = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-            ])
+#     transform_train = transforms.Compose([
+#                 transforms.RandomCrop(32, padding=4),
+#                 transforms.RandomHorizontalFlip(),
+#                 transforms.ToTensor(),
+#                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+#             ])
+#     transform_test = transforms.Compose([
+#                 transforms.ToTensor(),
+#                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+#             ])
 
 
     trainset = datasets.CIFAR100(root=data_dir, train=True,
@@ -87,11 +111,11 @@ def load_cifar100(data_dir="../data/cifar100", batch_size=128, train_shuffle=Fal
     return trainloader, testloader
 
 def load_tinyimagenet(data_dir="../data/tiny-imagenet-200", batch_size=128, train_shuffle=True):
-    transform=transforms.Compose(
-                    [transforms.Resize(32),
-                     transforms.ToTensor(),
-                     transforms.RandomHorizontalFlip(),
-                     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-    trainset = datasets.ImageFolder(os.path.join(data_dir, "train"),transform)
+#     transform=transforms.Compose(
+#                     [transforms.Resize(32),
+#                      transforms.ToTensor(),
+#                      transforms.RandomHorizontalFlip(),
+#                      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    trainset = datasets.ImageFolder(os.path.join(data_dir, "train"),imagenet_transform)
     data_loader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=train_shuffle, num_workers = 100)
     return data_loader

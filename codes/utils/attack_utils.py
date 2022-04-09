@@ -75,7 +75,7 @@ def train_stmodel_comb_hard_label(steal_loader, thieved_clf, criterion, optimize
             torch.cuda.empty_cache()
         logs_clf['loss'] = losses.avg.detach().cpu()
         if test_loader:
-            logs_clf['val_loss'],logs_clf['val_acc'] = test_model(thieved_clf, test_loader, criterion, device, best_acc, save_dir, save_model)
+            logs_clf['val_loss'],logs_clf['val_acc'] = test_model(thieved_clf, test_loader, criterion, device, 0.0, save_dir, save_model)
             if best_acc<logs_clf['val_acc']:
                 best_acc = logs_clf['val_acc']
 
@@ -119,7 +119,7 @@ def train_stmodel_comb_soft_label(steal_loader, thieved_clf, criterion, optimize
             torch.cuda.empty_cache()
         logs_clf['loss'] = losses.avg.detach().cpu()
         if test_loader:
-            logs_clf['val_loss'],logs_clf['val_acc'] = test_model(thieved_clf, test_loader, criterion, device, best_acc, save_dir, save_model)
+            logs_clf['val_loss'],logs_clf['val_acc'] = test_model(thieved_clf, test_loader, criterion, device, 0.0, save_dir, save_model)
             if best_acc<logs_clf['val_acc']:
                 best_acc = logs_clf['val_acc']
 

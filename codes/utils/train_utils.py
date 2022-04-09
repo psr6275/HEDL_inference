@@ -9,7 +9,7 @@ from livelossplot import PlotLosses
 import os
 
 from .swae_utils import sliced_wasserstein_distance
-from .eval_utils import AverageVarMeter, accuracy
+from .eval_utils import AverageVarMeter, accuracy, accuracy_b
 from .net_utils import apply_taylor_softmax
 
 def train_swd_fakenet_NLL(clf, train_loader, st_loader, optimizer,device, epochs, 
@@ -473,50 +473,76 @@ def test_model_multiple(model, test_loader, loss_list, loss_weights, device,
     model.eval()
     losses = AverageVarMeter()
     accs = AverageVarMeter()
-    
-    for batch_idx, (x,y) in enumerate(test_loader):
-        x = x.to(device)
-        y = y.to(device)
+    with torch.no_grad():
+        for batch_idx, (x,y) in enumerate(test_loader):
+            x = x.to(device)
+            y = y.to(device)
 
-        p_y = model(x)
-        
-        loss = 0.0
-        for i in range(len(loss_list)):
-            loss += loss_list[i](p_y,y) * loss_weights[i]
-        
-        acc = accuracy(p_y.detach().cpu(), y.detach().cpu())
-    
-        losses.update(loss,x.size(0))
-        accs.update(acc[0],x.size(0))
-        del x,y,p_y, loss
-        torch.cuda.empty_cache()
-#         print(acc)
-    if accs.avg>best_acc:
-        torch.save(model.state_dict(),os.path.join(save_dir, save_model))
+            p_y = model(x)
+
+            loss = 0.0
+            for i in range(len(loss_list)):
+                loss += loss_list[i](p_y,y) * loss_weights[i]
+
+            acc = accuracy(p_y.detach().cpu(), y.detach().cpu())
+
+            losses.update(loss,x.size(0))
+            accs.update(acc[0],x.size(0))
+            del x,y,p_y, loss
+            torch.cuda.empty_cache()
+    #         print(acc)
+        if accs.avg>best_acc:
+            torch.save(model.state_dict(),os.path.join(save_dir, save_model))
     return losses.avg.detach().cpu(), accs.avg.detach().cpu()
 
 def test_model(model, test_loader, criterion, device, best_acc=0.0,save_dir = "../results/",save_model = "ckpt.pth",pred_prob = False):
     model.eval()
     losses = AverageVarMeter()
     accs = AverageVarMeter()
-    for batch_idx, (x,y) in enumerate(test_loader):
-        x = x.to(device)
-        y = y.to(device)
+    with torch.no_grad():
+        for batch_idx, (x,y) in enumerate(test_loader):
+            x = x.to(device)
+            y = y.to(device)
 
-        p_y = model(x)
-        if pred_prob:
-            p_y = torch.log(p_y)
-        loss = criterion(p_y,y)
-        
-        acc = accuracy(p_y.detach().cpu(), y.detach().cpu())
-    
-        losses.update(loss,x.size(0))
-        accs.update(acc[0],x.size(0))
-        del x,y,p_y, loss, acc
-        torch.cuda.empty_cache()
-#         print(acc)
-    if accs.avg>best_acc:
-        torch.save(model.state_dict(),os.path.join(save_dir, save_model))
+            p_y = model(x)
+            if pred_prob:
+                p_y = torch.log(p_y)
+            loss = criterion(p_y,y)
+
+            acc = accuracy(p_y.detach().cpu(), y.detach().cpu())
+
+            losses.update(loss,x.size(0))
+            accs.update(acc[0],x.size(0))
+            del x,y,p_y, loss, acc
+            torch.cuda.empty_cache()
+    #         print(acc)
+        if accs.avg>best_acc:
+            torch.save(model.state_dict(),os.path.join(save_dir, save_model))
     return losses.avg.detach().cpu(), accs.avg.detach().cpu()
 
+def test_binary_model(model, test_loader, criterion, device, best_acc=0.0,save_dir = "../results/",save_model = "ckpt.pth",pred_prob = False):
+    model.to(device)
+    model.eval()
+    losses = AverageVarMeter()
+    accs = AverageVarMeter()
+    with torch.no_grad():
+        for batch_idx, (x,y) in enumerate(test_loader):
+            x = x.to(device)
+            y = y.to(device)
+
+            p_y = model(x)
+            if pred_prob:
+                p_y = torch.log(p_y)
+            loss = criterion(p_y,y)
+
+            acc = accuracy_b(p_y.detach().cpu(), y.detach().cpu())
+
+            losses.update(loss,x.size(0))
+            accs.update(acc,x.size(0))
+            del x,y,p_y, loss, acc
+            torch.cuda.empty_cache()
+    #         print(acc)
+        if accs.avg>best_acc:
+            torch.save(model.state_dict(),os.path.join(save_dir, save_model))
+    return losses.avg.detach().cpu().item(), accs.avg
 

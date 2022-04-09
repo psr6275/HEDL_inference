@@ -21,6 +21,15 @@ class Net_tsoftmax(nn.Module):
         x = self.model(x)
         x = apply_taylor_softmax(x)
         return x
+    
+class Net_softmax(nn.Module):
+    def __init__(self, model):
+        super(Net_softmax, self).__init__()
+        self.model = model
+    def forward(self,x):
+        x = self.model(x)
+        x = F.softmax(x,dim=1)
+        return x
 
 class CombNet(nn.Module):
     def __init__(self, net_orig, net_fake, tau=0.5):
