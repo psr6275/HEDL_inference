@@ -23,22 +23,29 @@ transform_test = transforms.Compose([
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
             ])
 
+mnist_transform=transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.1307,), (0.3081,))
+    ])
+
 imagenet_transform=transforms.Compose(
                     [transforms.Resize(32),
                      transforms.ToTensor(),
                      transforms.RandomHorizontalFlip(),
                      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-# def make_st_loader(model, train_loader, device, num_data = None):
-#     model.to(device)
-#     model.eval()
-#     outs = []
-#     for x,_ in train_loader:
-#         outs.append(model(x.to(device)).detach().cpu())
-#     outs = torch.cat(outs,dim=0)
-#     st_loader = DataLoader(TensorDataset(outs),shuffle=True,batch_size=train_loader.batch_size)
-#     model.cpu()
-#     return st_loader    
+def make_st_loader(model, train_loader, device, num_data = None):
+    model.to(device)
+    model.eval()
+    outs = []
+    with torch.no_grad():
+        for x,_ in train_loader:
+            outs.append(model(x.to(device)).detach().cpu())
+            del x
+    outs = torch.cat(outs,dim=0)
+    st_loader = DataLoader(TensorDataset(outs),shuffle=True,batch_size=train_loader.batch_size)
+    model.cpu()
+    return st_loader    
 
 def train_valid_split(dataloader, total_data=20000, ratio = 0.5, batch_size = 128):
     dset = copy.deepcopy(dataloader.dataset)
@@ -70,6 +77,23 @@ def make_randomlabel(dataloader, num_class = 10, batch_size=128, train_shuffle=T
     randloader = torch.utils.data.DataLoader(randset,batch_size=batch_size, shuffle=train_shuffle)
     del trainloader_all, train_all
     return randloader
+
+def load_mnist(data_dir="../data/mnist", batch_size=128, test_batch = None,train_shuffle=True):
+
+    trainset = datasets.MNIST(root=data_dir, train=True,
+                                            download=True, transform=mnist_transform)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
+                                              shuffle=train_shuffle)#, num_workers=2)
+    testset = datasets.MNIST(root=data_dir, train=False,
+                                           download=True, transform=mnist_transform)
+    
+    if test_batch is None:
+        test_batch = len(testset)
+    
+    testloader = torch.utils.data.DataLoader(testset, batch_size=test_batch,
+                                             shuffle=False)#, num_workers=2)
+    return trainloader, testloader
+
 
 def load_cifar10(data_dir="../data/cifar10", batch_size=128, test_batch = None,train_shuffle=True):
 

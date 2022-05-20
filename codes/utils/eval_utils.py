@@ -23,7 +23,86 @@ def maxclass_hist(data_loader, model, device, plt_title = None,bins=10,
     plt.show()
     model.cpu()
     if return_val:
-        return max_vals    
+        return max_vals 
+    
+def maxclass_hist_comb(data_loader, comb_model, device, plt_title = None,bins=10, 
+                  return_val = False, clipping =False, clip_vals = [0.0,1.0]):
+    comb_model.to(device).eval()
+
+    with torch.no_grad():
+        for i, data in enumerate(data_loader,0):
+            x = data[0].to(device)
+            outs = comb_model(x)
+            outs_f = (torch.max(comb_model.net_orig(x).cpu().detach(),dim=1).values<=comb_model.tau).numpy().flatten()
+            if i==0:
+                max_vals = outs.cpu().detach().numpy()
+                f_idxs = outs_f
+            else:
+                max_vals = np.vstack((max_vals, outs.cpu().detach().numpy()))
+#                 print(f_idxs.shape, outs_f.shape)
+                f_idxs = np.hstack((f_idxs,outs_f))
+                
+            del data,x,outs, outs_f
+    max_vals = np.max(max_vals,axis=1)
+    if clipping:
+        max_vals = np.clip(max_vals, clip_vals[0], clip_vals[1])
+    if plt_title:
+        plt.title(plt_title)
+    plt.hist(max_vals, bins=bins,label="combined network")
+    plt.hist(max_vals[f_idxs], bins=bins, label="fake network")
+    plt.legend(loc ='upper left')
+    plt.show()
+    comb_model.cpu()
+    if return_val:
+        return max_vals,f_idxs     
+def prediction_hist_comb(data_loader, comb_model, device, plt_title = None,bins=10):
+    comb_model.to(device).eval()
+    max_idxs = torch.tensor([])
+    f_idxs = torch.tensor([])
+    with torch.no_grad():
+        for data in data_loader:
+            outs = model(data[0].to(device))
+            _,idxs = outs.cpu().detach().max(axis=1)
+            max_idxs = torch.cat((max_idxs,idxs))
+            outs_f = (torch.max(comb_model.net_orig(data[0].to(device)).cpu().detach(),dim=1).values<=comb_model.tau).numpy().flatten()
+            f_idxs = torch.cat((f_idxs, outs_f))
+            del data, outs,idxs
+    
+    if plt_title:
+        plt.title(plt_title)
+    plt.hist(max_idxs.numpy().flatten(), bins=bins,label="combined network")
+    plt.hist(max_idxs.numpy().flatten()[f_idxs.numpy().flatten()], bins=bins, label="fake network")
+    plt.legend(loc ='upper left')
+    plt.show()
+    model.cpu()
+    
+def get_prediction(model, testloader, device):
+    model.to(device).eval()
+    preds = []
+    with torch.no_grad():
+        for data in testloader:
+            preds.append(model(data[0].to(device)).detach().cpu())
+        preds = torch.cat(preds,dim=0)
+    return preds
+
+def test_fakenet_ratio(model,testloader,tau,device,combnet=True):
+    if combnet:
+        net = model.net_orig
+    else:
+        net = model
+    net.to(device).eval()
+    ssc = 0.0
+    ss = 0.0
+    with torch.no_grad():
+        for x,_ in testloader:
+            out = net(x.to(device)).detach().cpu()
+#             print(torch.max(out,1))
+#             print(torch.sum(torch.max(out,1)[0]>tau))
+            ssc += torch.sum(torch.max(out,1)[0]<tau).item()
+            ss += len(x)
+            del x, out
+    net.cpu()
+    return (ssc/ss)*100
 
 def plot_individual_prediction(batch_x, batch_y, device, net1, net2 = None):
     if net2 is None:

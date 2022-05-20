@@ -32,20 +32,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--net1-location",
+    "--net-location",
     default="../results/cifar_orig_logit.pth",
     type=str,
     metavar="PATH",
     help="path to real model checkpoint (default: none)",
 )
 
-parser.add_argument(
-    "--net2-location",
-    default="../results/cifar_fake_small_logit_ML_swd.pth",
-    type=str,
-    metavar="PATH",
-    help="path to fake model checkpoint (default: none)",
-)
+# parser.add_argument(
+#     "--net2-location",
+#     default="../results/cifar_fake_lenet_swd.pth",
+#     type=str,
+#     metavar="PATH",
+#     help="path to fake model checkpoint (default: none)",
+# )
 
 parser.add_argument(
     "--data-location",
@@ -59,7 +59,7 @@ parser.add_argument(
     "--seed", default=None, type=int, help="seed for initializing training. "
 )
 
-parser.add_argument("--tau", default=0.8, type=float, help="threshold parameter for the combined network")
+# parser.add_argument("--tau", default=0.5, type=float, help="threshold parameter for the combined network")
 
 parser.add_argument(
     "--skip-plaintext",
@@ -75,24 +75,9 @@ parser.add_argument(
     help="Run example in multiprocess mode",
 )
 
-parser.add_argument(
-    "--cond-bool",
-    default=True,
-    action="store_false",
-    help="use the soft combination",
-)
-
-parser.add_argument(
-    "--same-net",
-    default=False,
-    action="store_true",
-    help="use the soft combination",
-)
-
-
 def _run_experiment(args):
     # only import here to initialize crypten within the subprocesses
-    from crypten_utils import run_mpc_cifar
+    from crypten_utils import run_mpc_cifar_vanilla
 
     # Only Rank 0 will display logs.
     level = logging.INFO
@@ -100,17 +85,13 @@ def _run_experiment(args):
         level = logging.CRITICAL
     logging.getLogger().setLevel(level)
     
-    run_mpc_cifar(
+    run_mpc_cifar_vanilla(
         args.batch_size,
-        args.net1_location,
-        args.net2_location,
+        args.net_location,
         args.data_location,
         args.seed,
-        args.tau,
         args.skip_plaintext,
         args.print_freq,
-        args.cond_bool,
-        args.same_net,
     )
     print("="*10)
     print("total communication stats")

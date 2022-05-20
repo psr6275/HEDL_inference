@@ -66,7 +66,7 @@ def train_swd_fakenet_NLL(clf, train_loader, st_loader, optimizer,device, epochs
         logs_clf['loss2'] = losses2.avg.detach().cpu()
 
         if test_loader:
-            logs_clf['val_loss1'],logs_clf['val_acc'] = test_fake_model_NLL(clf, test_loader, loss_clf, device,worst_acc, save_dir, save_model)
+            logs_clf['val_loss1'],logs_clf['val_acc'] = test_fake_model_NLL(clf, test_loader, loss_clf, device,100.0, save_dir, save_model)
             if worst_acc>logs_clf['val_acc']:
                 worst_acc = logs_clf['val_acc']
 #         print(epoch,logs_clf)
@@ -74,6 +74,70 @@ def train_swd_fakenet_NLL(clf, train_loader, st_loader, optimizer,device, epochs
         liveloss_tr.send()
     clf.cpu()
     return clf, logs_clf
+
+def train_swd_fakenet_NLL2(clf, train_loader, st_loader, optimizer,device, epochs, 
+                          loss_weights=5., test_loader = None,save_dir='../results', save_model="cifar_fake.pth"):
+    
+    """
+        train fakenet with NLL loss and SWD regularization
+    """
+
+    clf.to(device)
+    
+    loss_clf = nn.NLLLoss()
+    liveloss_tr = PlotLosses()
+    logs_clf = {}
+    worst_acc = 100.0
+    
+    for epoch in range(epochs):
+        losses = AverageVarMeter()
+        losses1 = AverageVarMeter()
+        losses2 = AverageVarMeter()
+        accs = AverageVarMeter()
+        clf.train()
+        
+        iterloader = iter(st_loader)
+        
+        for x,y in train_loader:
+            x,y = x.to(device),y.to(device)
+            clf.zero_grad()
+
+            pred = clf(x)
+            out = torch.log(pred)
+            fake_loss = -loss_clf(out,y)
+#             fake_loss = 0
+            try:
+                batch = next(iterloader)
+            except StopIteration:
+                iterloader = iter(st_loader)
+                batch = next(iterloader)
+            swd_loss = sliced_wasserstein_distance(pred,batch[0].to(device),num_projections=50,p=2,device=device)
+            loss = fake_loss + swd_loss*loss_weights
+            loss.backward()
+            optimizer.step()
+            acc = accuracy(pred.detach().cpu(),y.detach().cpu())
+            losses.update(loss,x.size(0))
+            losses1.update(fake_loss.detach().cpu(),x.size(0))
+            losses2.update(swd_loss.detach().cpu(),x.size(0))
+            accs.update(acc[0],x.size(0))
+            del acc, out,x,y,loss,batch, pred, swd_loss
+            torch.cuda.empty_cache()
+            
+        logs_clf['acc'] = accs.avg.detach().cpu()
+        logs_clf['loss'] = losses.avg.detach().cpu()
+        logs_clf['loss1'] = losses1.avg.detach().cpu()
+        logs_clf['loss2'] = losses2.avg.detach().cpu()
+
+        if test_loader:
+            logs_clf['val_loss1'],logs_clf['val_acc'] = test_fake_model_NLL(clf, test_loader, loss_clf, device,100.0, save_dir, save_model)
+            if worst_acc>logs_clf['val_acc']:
+                worst_acc = logs_clf['val_acc']
+#         print(epoch,logs_clf)
+        liveloss_tr.update(logs_clf)
+        liveloss_tr.send()
+    clf.cpu()
+    return clf, logs_clf
+
 
 def train_swd_fakenet_CE(clf, train_loader, st_loader, optimizer,device, epochs, 
                           loss_weights=[-1.0,5.0],test_loader = None,save_dir='../results', save_model="cifar_fake.pth"):
@@ -123,7 +187,7 @@ def train_swd_fakenet_CE(clf, train_loader, st_loader, optimizer,device, epochs,
         logs_clf['loss1'] = losses1.avg.detach().cpu()
         logs_clf['loss2'] = losses2.avg.detach().cpu()
         if test_loader:
-            logs_clf['val_loss1'],logs_clf['val_acc'] = test_fake_model(clf,test_loader,loss_clf,loss_weights[0],device,worst_acc,save_dir, save_model)
+            logs_clf['val_loss1'],logs_clf['val_acc'] = test_fake_model(clf,test_loader,loss_clf,loss_weights[0],device,100.0,save_dir, save_model)
             if worst_acc>logs_clf['val_acc']:
                 worst_acc = logs_clf['val_acc']
 
@@ -167,7 +231,7 @@ def train_fakenet_NLL(clf, train_laoder, optimizer, device, epochs, test_loader 
         logs_clf['acc'] = accs.avg.detach().cpu()
         logs_clf['loss'] = losses.avg.detach().cpu()
         if test_loader:
-            logs_clf['val_loss'],logs_clf['val_acc'] = test_fake_model_NLL(clf,test_loader,loss_clf,device,worst_acc,save_dir,save_model)
+            logs_clf['val_loss'],logs_clf['val_acc'] = test_fake_model_NLL(clf,test_loader,loss_clf,device,100.0,save_dir,save_model)
             if worst_acc>logs_clf['val_acc']:
                 worst_acc = logs_clf['val_acc']
 

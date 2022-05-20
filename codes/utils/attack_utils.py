@@ -4,12 +4,69 @@ from .train_utils import test_model
 from .eval_utils import AverageVarMeter, accuracy, correspondence_score
 
 from torch.utils.data import SubsetRandomSampler
+import torch.nn.functional as F
 
 import numpy as np
 from livelossplot import PlotLosses
 import os
 
 from .net_utils import CombNet, CombNet_soft
+from .train_utils import test_binary_model
+
+from torch.utils.data import TensorDataset, DataLoader
+def make_adaptive_loader(model_prob, victim_net, dataloader, tau, device, batch_size=128, shuffle=True):
+
+    model_prob.to(device).eval()
+    victim_net.to(device).eval()
+    labels = []
+    ori_out = []
+    with torch.no_grad():
+        for x,y in dataloader:
+            with torch.no_grad():
+                out = victim_net(x.to(device)).detach().cpu()
+                ori_out.append(out)
+            pred = torch.max(model_prob(x.to(device)).detach().cpu(),axis=1)
+#             print(pred)
+            labels.append(torch.tensor(pred[0]>tau).float())
+            del x,y,pred, out
+    data = torch.cat(ori_out,dim=0)
+    labels = torch.cat(labels,dim=0)
+    dataloader_ = DataLoader(TensorDataset(data, labels),batch_size=batch_size, shuffle=shuffle)
+    model_prob.cpu()
+    victim_net.cpu()
+    return dataloader_
+
+
+
+def train_adapt_model(adpt_att_model, adpt_loader, criterion, optimizer, epochs, device, adpt_testloader = None, save_dir = "../results", save_model = "cifar_adapt_model.pth"):
+    adpt_att_model.to(device)
+    
+    logs_clf = {}
+    best_acc = 0.0
+    liveloss_tr = PlotLosses()
+    
+    for epoch in range(epochs):
+        adpt_att_model.train()
+        
+        for x,y in adpt_loader:
+
+            adpt_att_model.zero_grad()
+
+            out = adpt_att_model(x.to(device))
+            loss = criterion(out.flatten().float(), y.to(device).float())
+            
+            loss.backward()
+            optimizer.step()
+            
+            del x,out,  y, loss
+            torch.cuda.empty_cache()
+        logs_clf['loss'], logs_clf['acc']= test_binary_model(adpt_att_model, adpt_loader, criterion, device, 100.0, save_dir, save_model)
+        if adpt_testloader is not None:
+            logs_clf['val_loss'], logs_clf['val_acc']= test_binary_model(adpt_att_model, adpt_testloader, criterion, device, 0.0, save_dir, save_model)
+        liveloss_tr.update(logs_clf)
+        liveloss_tr.send()
+    adpt_att_model.cpu()
+    return adpt_att_model, logs_clf            
 
 def select_data(trainset, nb_stolen,batch_size=128, select_shuffle = False):  #attack용 데이터 중 원하는 개수 추출
     x = trainset.data

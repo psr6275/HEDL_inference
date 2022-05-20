@@ -23,7 +23,10 @@ import torch.utils.data.distributed
 # from examples.util import NoopContextManager
 from torchvision import datasets, transforms
 
-from utils import load_cifar10
+from utils import load_cifar10, load_mnist
+
+from cifar_models import AttackNet, small_fakenet
+from mnist_models import AttackNetMNIST, small_AttackNetMNIST
 
 cfg.communicator.verbose = True # add this line
 
@@ -41,7 +44,47 @@ def construct_private_model(input_size, model):
     if rank == 0:
         model_upd = model
     else:
-        model_upd = LeNet()
+        model_upd = AttackNet()
+    private_model = crypten.nn.from_pytorch(model_upd, dummy_input).encrypt(src=0)
+    return private_model
+def construct_private_model_small(input_size, model):
+    """Encrypt and validate trained model for multi-party setting."""
+    # get rank of current process
+    rank = comm.get().get_rank()
+    dummy_input = torch.empty(input_size)
+
+    # party 0 always gets the actual model; remaining parties get dummy model
+    if rank == 0:
+        model_upd = model
+    else:
+        model_upd = small_fakenet()
+    private_model = crypten.nn.from_pytorch(model_upd, dummy_input).encrypt(src=0)
+    return private_model
+
+def construct_private_model_mnist(input_size, model):
+    """Encrypt and validate trained model for multi-party setting."""
+    # get rank of current process
+    rank = comm.get().get_rank()
+    dummy_input = torch.empty(input_size)
+
+    # party 0 always gets the actual model; remaining parties get dummy model
+    if rank == 0:
+        model_upd = model
+    else:
+        model_upd = AttackNetMNIST()
+    private_model = crypten.nn.from_pytorch(model_upd, dummy_input).encrypt(src=0)
+    return private_model
+def construct_private_model_small_mnist(input_size, model):
+    """Encrypt and validate trained model for multi-party setting."""
+    # get rank of current process
+    rank = comm.get().get_rank()
+    dummy_input = torch.empty(input_size)
+
+    # party 0 always gets the actual model; remaining parties get dummy model
+    if rank == 0:
+        model_upd = model
+    else:
+        model_upd = small_AttackNetMNIST()
     private_model = crypten.nn.from_pytorch(model_upd, dummy_input).encrypt(src=0)
     return private_model
 
@@ -62,39 +105,153 @@ class AverageMeter:
     def value(self):
         return self.sum / self.count
 
-def run_mpc_cifar(batch_size =128, net1_location = None, net2_location=None, data_location = "../data/cifar", 
-                  seed = None, tau = 0.6, skip_plaintext=False, print_freq=10):    
+def run_mpc_mnist(batch_size =128, net1_location = None, net2_location=None, data_location = "../data/mnist", 
+                  seed = None, tau = 0.6, skip_plaintext=False, print_freq=10, cond_bool = True, same_net = True):    
     if seed is not None:
         random.seed(seed)
         torch.manual_seed(seed)
     
 #     crypten.init()
     
-    _, test_loader = load_cifar10(data_dir="../data/cifar10", batch_size=128, 
-                                       test_batch = 128,train_shuffle=True)
+    _, test_loader = load_mnist(data_dir=data_location, batch_size=batch_size, 
+                                       test_batch = batch_size,train_shuffle=True)
     criterion = nn.NLLLoss()
     
-    net1 = LeNet()
-    net2 = LeNet()
+    net1 = AttackNetMNIST()
+#     net2 = AttackNet()
+    if same_net:
+        net2 = AttackNetMNIST()        
+    else:
+        net2 = small_AttackNetMNIST()
     
     net1.load_state_dict(torch.load(net1_location,map_location='cpu'))
     net2.load_state_dict(torch.load(net2_location,map_location='cpu'))
     
     if not skip_plaintext:
         logging.info("===== Evaluating plaintext combined LeNet network =====")
-        validate_comb(test_loader, net1, net2, criterion, tau, print_freq, cond_bool = True)
+        validate_comb(test_loader, net1, net2, criterion, tau, print_freq, cond_bool)
     logging.info("===== Evaluating Private combined LeNet network =====")
+#     print("*"*30)
+#     crypten.print_communication_stats()
+#     print("*"*30)
+    input_size = get_input_size(test_loader, batch_size)
+    net1_enc = construct_private_model_mnist(input_size, net1)
+#     net2_enc = construct_private_model(input_size, net2)
+    if same_net:
+        net2_enc = construct_private_model_mnist(input_size, net2)        
+    else:        
+        net2_enc = construct_private_model_small_mnist(input_size, net2)
+        
+    validate_comb(test_loader, net1_enc, net2_enc, criterion, tau, print_freq, cond_bool)
     print("*"*30)
     crypten.print_communication_stats()
-    print("*"*30)
+    print("*"*30)    
+    
+def run_mpc_cifar(batch_size =128, net1_location = None, net2_location=None, data_location = "../data/cifar", 
+                  seed = None, tau = 0.6, skip_plaintext=False, print_freq=10, cond_bool = True, same_net = True):    
+    if seed is not None:
+        random.seed(seed)
+        torch.manual_seed(seed)
+    
+#     crypten.init()
+    
+    _, test_loader = load_cifar10(data_dir="../data/cifar10", batch_size=batch_size, 
+                                       test_batch = batch_size,train_shuffle=True)
+    criterion = nn.NLLLoss()
+    
+    net1 = AttackNet()
+#     net2 = AttackNet()
+    if same_net:
+        net2 = AttackNet()        
+    else:
+        net2 = small_fakenet()
+    
+    net1.load_state_dict(torch.load(net1_location,map_location='cpu'))
+    net2.load_state_dict(torch.load(net2_location,map_location='cpu'))
+    
+    if not skip_plaintext:
+        logging.info("===== Evaluating plaintext combined LeNet network =====")
+        validate_comb(test_loader, net1, net2, criterion, tau, print_freq, cond_bool)
+    logging.info("===== Evaluating Private combined LeNet network =====")
+#     print("*"*30)
+#     crypten.print_communication_stats()
+#     print("*"*30)
     input_size = get_input_size(test_loader, batch_size)
     net1_enc = construct_private_model(input_size, net1)
-    net2_enc = construct_private_model(input_size, net2)
-    validate_comb(test_loader, net1_enc, net2_enc, criterion, tau, print_freq)
+#     net2_enc = construct_private_model(input_size, net2)
+    if same_net:
+        net2_enc = construct_private_model(input_size, net2)        
+    else:        
+        net2_enc = construct_private_model_small(input_size, net2)
+        
+    validate_comb(test_loader, net1_enc, net2_enc, criterion, tau, print_freq, cond_bool)
     print("*"*30)
     crypten.print_communication_stats()
     print("*"*30)
+
+def run_mpc_mnist_vanilla(batch_size =128, net_location = None, data_location = "../data/mnist", 
+                  seed = None, skip_plaintext=False, print_freq=10):    
+    if seed is not None:
+        random.seed(seed)
+        torch.manual_seed(seed)
     
+#     crypten.init()
+    
+    _, test_loader = load_mnist(data_dir=data_location, batch_size=batch_size, 
+                                       test_batch = batch_size,train_shuffle=True)
+    criterion = nn.NLLLoss()
+    
+    net = AttackNetMNIST()
+    
+    net.load_state_dict(torch.load(net_location,map_location='cpu'))
+#     net2.load_state_dict(torch.load(net2_location,map_location='cpu'))
+    
+    if not skip_plaintext:
+        logging.info("===== Evaluating plaintext combined LeNet network =====")
+        validate(test_loader, net, criterion, print_freq)
+    logging.info("===== Evaluating Private combined LeNet network =====")
+#     print("*"*30)
+#     crypten.print_communication_stats()
+#     print("*"*30)
+    input_size = get_input_size(test_loader, batch_size)
+    net_enc = construct_private_model_mnist(input_size, net)
+#     net2_enc = construct_private_model(input_size, net2)
+    validate(test_loader, net_enc, criterion, print_freq)
+    print("*"*30)
+    crypten.print_communication_stats()
+    print("*"*30)    
+    
+def run_mpc_cifar_vanilla(batch_size =128, net_location = None, data_location = "../data/cifar", 
+                  seed = None, skip_plaintext=False, print_freq=10):    
+    if seed is not None:
+        random.seed(seed)
+        torch.manual_seed(seed)
+    
+#     crypten.init()
+    
+    _, test_loader = load_cifar10(data_dir="../data/cifar10", batch_size=batch_size, 
+                                       test_batch = batch_size,train_shuffle=True)
+    criterion = nn.NLLLoss()
+    
+    net = AttackNet()
+    
+    net.load_state_dict(torch.load(net_location,map_location='cpu'))
+#     net2.load_state_dict(torch.load(net2_location,map_location='cpu'))
+    
+    if not skip_plaintext:
+        logging.info("===== Evaluating plaintext combined LeNet network =====")
+        validate(test_loader, net, criterion, print_freq)
+    logging.info("===== Evaluating Private combined LeNet network =====")
+#     print("*"*30)
+#     crypten.print_communication_stats()
+#     print("*"*30)
+    input_size = get_input_size(test_loader, batch_size)
+    net_enc = construct_private_model(input_size, net)
+#     net2_enc = construct_private_model(input_size, net2)
+    validate(test_loader, net_enc, criterion, print_freq)
+    print("*"*30)
+    crypten.print_communication_stats()
+    print("*"*30)
     
 def validate(val_loader, model, criterion, print_freq=10):
     batch_time = AverageMeter()
@@ -112,8 +269,18 @@ def validate(val_loader, model, criterion, print_freq=10):
                 input
             ):
                 input = encrypt_data_tensor_with_src(input)
+#                 print("*"*10,"start inference","*"*10)
+#                 crypten.print_communication_stats()
+#                 print("*"*30)
+
             # compute output
             output = model(input)
+            output = output.softmax(dim=1)
+#             if isinstance(model, crypten.nn.Module):
+#                 print("*"*10,"end batch",i,"*"*10)
+#                 crypten.print_communication_stats()
+#                 print("*"*30)
+                
             if crypten.is_encrypted_tensor(output):
                 output = output.get_plain_text()
             loss = criterion(output, target)
@@ -148,10 +315,12 @@ def validate(val_loader, model, criterion, print_freq=10):
                         top3.value(),
                     )
                 )
+            
 
         logging.info(
             " * Prec@1 {:.3f} Prec@3 {:.3f}".format(top1.value(), top3.value())
         )
+    
     return top1.value()
 
 def validate_comb(val_loader, model1, model2, criterion, tau = 0.5, print_freq=10, cond_bool = False):
@@ -169,16 +338,22 @@ def validate_comb(val_loader, model1, model2, criterion, tau = 0.5, print_freq=1
     with torch.no_grad():
         end = time.time()
         for i, (input, target) in enumerate(val_loader):
-            if isinstance(model1, crypten.nn.Module) and isinstance(model2, crypten.nn.Module) and not crypten.is_encrypted_tensor(
-                input
-            ):
+            private = isinstance(model1, crypten.nn.Module) and isinstance(model2, crypten.nn.Module) and not crypten.is_encrypted_tensor(input)
+#             print("private",private)
+            if private:
                 input = encrypt_data_tensor_with_src(input)
+#                 print("*"*10,"start inference","*"*10)
+#                 crypten.print_communication_stats()
+#                 print("*"*30)
                 
             # compute output
-            if cond_bool:
-                output = inference_combmodel(model1, model2, input, tau,True)
-            else:
-                output = inference_combmodel(model1, model2, input, tau,False)
+            output = inference_combmodel(model1, model2, input, tau,cond_bool,private=private)
+            
+            if private:
+                print("*"*10,"end batch",i,"*"*10)
+                crypten.print_communication_stats()
+                print("*"*30)
+                
             if crypten.is_encrypted_tensor(output):
                 output = output.get_plain_text()
             loss = criterion(output.log(), target)
@@ -219,14 +394,20 @@ def validate_comb(val_loader, model1, model2, criterion, tau = 0.5, print_freq=1
         )
     return top1.value()
 
-def inference_combmodel(net1_enc, net2_enc, x, tau=0.5, cond_bool = False):
+def inference_combmodel(net1_enc, net2_enc, x, tau=0.5, cond_bool = False, nu=1.0,private=True):
     x1 = net1_enc(x).softmax(dim=1)
     x2 = net2_enc(x).softmax(dim=1)
     max_val = x1.max(dim=1)[0]
-    cond_in = max_val>tau
+    
     if cond_bool:
+        cond_in = max_val>tau
+    else:
+        cond_in = (nu*(tau-max_val)).sigmoid()
+
+    if private==False:
         cond_in = cond_in.float()
     out = x1*cond_in.view(-1,1) + x2*(1-cond_in.view(-1,1))
+#     out = x1*cond_in.view(-1,1)
     return out
 
 def accuracy(output, target, topk=(1,)):

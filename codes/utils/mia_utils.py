@@ -14,6 +14,8 @@ import os
 from .train_utils import test_binary_model
 from .eval_utils import AverageVarMeter
 
+import torch.nn.functional as F
+
 
 transform_train = transforms.Compose([
                 transforms.RandomCrop(32, padding=4),
@@ -28,9 +30,10 @@ transform_test = transforms.Compose([
 
 
 def make_MIA_loader_with_target(st_model, dataloader,device,batch_size=128,shuffle=False):
-    ori_in = []
+#     ori_in = []
     ori_pred = []
     ori_target = []
+    ori_ohy = [] #one hot y
     st_model.to(device).eval()
     with torch.no_grad():
         for x,y in dataloader:
@@ -38,11 +41,12 @@ def make_MIA_loader_with_target(st_model, dataloader,device,batch_size=128,shuff
             pred = st_model(x.to(device)).detach().cpu()
             ori_pred.append(pred)
             ori_target.append(y)
+            ori_ohy.append(F.one_hot(y,num_classes=10))
             del x,pred,y
     st_model.cpu()
-    ori_in = torch.cat(ori_in,dim=0)
+    ori_ohy = torch.cat(ori_ohy,dim=0)
     ori_pred = torch.cat(ori_pred,dim=0)
-    data = torch.cat((ori_in.view(-1,32*32*3),ori_pred),dim=1)
+    data = torch.cat((ori_pred,ori_ohy),dim=1)
     labels = torch.cat(ori_target,dim=0)
     
     dataloader_ = DataLoader(TensorDataset(data,labels),batch_size=batch_size, shuffle=shuffle)
@@ -55,26 +59,28 @@ def prepare_MIAattack_loader(st_model, st_trainloader, st_validloader, device, b
         assume that data laoders have hard labels
         use fixed loader for mia attack 
     """
-    ori_in = [] 
+    ori_ohy = [] 
+#     ori_out = []
     ori_pred = []
     st_model.to(device)
     st_model.eval()
     with torch.no_grad():
-        for x, _ in st_trainloader:
-            ori_in.append(x)
+        for x, y in st_trainloader:
+            ori_ohy.append(F.one_hot(y,num_classes=10))
+#             ori_out.append(F.one_hot(y,num_classes=10))
             pred = st_model(x.to(device)).detach().cpu()
             ori_pred.append(pred)
-            del x, pred
-        for x, _ in st_validloader:
-            ori_in.append(x)
+            del x, pred,y
+        for x, y in st_validloader:
+            ori_ohy.append(F.one_hot(y,num_classes=10))
             pred = st_model(x.to(device)).detach().cpu()
             ori_pred.append(pred)
             del x, pred
     
     st_model.cpu()
-    ori_in = torch.cat(ori_in,dim=0)
+    ori_ohy = torch.cat(ori_ohy,dim=0)
     ori_pred = torch.cat(ori_pred,dim=0)
-    data = torch.cat((ori_in.view(-1,32*32*3), ori_pred),dim=1)
+    data = torch.cat((ori_pred,ori_ohy),dim=1)
     print("data shape:", data.shape)
     
     num_tr = _data_num(st_trainloader)

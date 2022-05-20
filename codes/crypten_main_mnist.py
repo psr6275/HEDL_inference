@@ -5,7 +5,7 @@ import os
 from crypten_utils import MultiProcessLauncher
 import crypten.communicator as comm
 
-parser = argparse.ArgumentParser(description="CrypTen Cifar Training")
+parser = argparse.ArgumentParser(description="CrypTen MNIST Training")
 parser.add_argument(
     "--world_size",
     type=int,
@@ -33,7 +33,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--net1-location",
-    default="../results/cifar_orig_logit.pth",
+    default="../results/mnist_orig_mpc.pth",
     type=str,
     metavar="PATH",
     help="path to real model checkpoint (default: none)",
@@ -41,7 +41,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--net2-location",
-    default="../results/cifar_fake_small_logit_ML_swd.pth",
+    default="../results/mnist_fake_small_mpc_minloss.pth",
     type=str,
     metavar="PATH",
     help="path to fake model checkpoint (default: none)",
@@ -49,7 +49,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--data-location",
-    default="../data/cifar10",
+    default="../data/mnist",
     type=str,
     metavar="PATH",
     help="path to fake model checkpoint (default: none)",
@@ -59,7 +59,7 @@ parser.add_argument(
     "--seed", default=None, type=int, help="seed for initializing training. "
 )
 
-parser.add_argument("--tau", default=0.8, type=float, help="threshold parameter for the combined network")
+parser.add_argument("--tau", default=0.99, type=float, help="threshold parameter for the combined network")
 
 parser.add_argument(
     "--skip-plaintext",
@@ -92,7 +92,7 @@ parser.add_argument(
 
 def _run_experiment(args):
     # only import here to initialize crypten within the subprocesses
-    from crypten_utils import run_mpc_cifar
+    from crypten_utils import run_mpc_mnist
 
     # Only Rank 0 will display logs.
     level = logging.INFO
@@ -100,7 +100,7 @@ def _run_experiment(args):
         level = logging.CRITICAL
     logging.getLogger().setLevel(level)
     
-    run_mpc_cifar(
+    run_mpc_mnist(
         args.batch_size,
         args.net1_location,
         args.net2_location,
