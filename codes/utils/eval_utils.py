@@ -163,6 +163,7 @@ class AverageVarMeter(object):
     def reset(self):
         self.val=0
         self.sum2 = 0
+        self.std = 0
         self.avg=0
         self.sum=0
         self.count=0
@@ -174,6 +175,7 @@ class AverageVarMeter(object):
         self.sum +=val*n
         self.count +=n
         self.avg = self.sum / self.count
+#         self.std = torch.sqrt(self.sum2/self.count-self.avg**2)
 
 
 def accuracy(output, target, topk=(1,)):

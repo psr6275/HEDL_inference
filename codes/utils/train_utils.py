@@ -354,7 +354,7 @@ def train_model_with_oe_KL(clf, train_loader, outlier_loader, optimizer, device,
             if pred_prob:
                 pred_in = torch.log(pred_in)
             else:
-                pred_out = apply_apply_taylor_softmax(pred_out)
+                pred_out = apply_taylor_softmax(pred_out)
             loss1 = loss_in(pred_in,y)
             
                 
